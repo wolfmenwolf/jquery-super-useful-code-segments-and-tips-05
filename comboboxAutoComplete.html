@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>jQuery UI Autocomplete - Combobox</title>
+    <script src="../jquery/js/jquery-1.9.1.js"></script>
+    <script src="../jquery/js/jquery-ui-1.10.3.custom.js"></script>
+    <link href="../jquery/css/cupertino/jquery-ui-1.10.3.custom.css" rel="stylesheet">
+    <link rel="stylesheet" href="../jquery/themes/base/jquery.ui.all.css">
+    <script src="../jquery/ui/jquery.ui.core.js"></script>
+    <script src="../jquery/ui/jquery.ui.widget.js"></script>
+    <script src="../jquery/ui/jquery.ui.position.js"></script>
+    <script src="../jquery/ui/jquery.ui.menu.js"></script>
+    <script src="../jquery/ui/jquery.ui.autocomplete.js"></script>
+   <script type="text/javascript">
+       (function ($) {
+           /**
+            * 编写jQueryUI插件(widget)
+            * 使用jQueryUI的widget来写插件，相比于基本的jquery插件有一些好处：
+            * 方便实现继承，代码重用
+            * 默认是单例
+            * widget已经给你实现好的一些常用方法，例如destroy
+            * 带来好处的同时也带来了荆棘和陷阱，本文的目的就是梳理这些荆棘，标出哪里有陷阱。
+            * 基本知识：命名规范，public, private, this, this.element
+            * 如何开始写一个widget呢？模板如下：
+            * function ($) {
+            * //utility functions (won’t be inherited)
+            * function foo() {}
+            * $.widget('命名空间.插件名', $.继承插件的命名空间.插件名,{ // snip });
+            * })(jQuery);
+            * 其中命名空间是可选的，要不要继承别的widget也是可选的。大头是后面snip的部分，这也是下文要讲的。
+            * 一般来说工具函数写在widget外面比较合适，但如果你想要这些工具函数被子类继承，则需要写在widget里面。
+            */
+           $.widget("custom.combobox",{
+               _create:function () {
+                   /**
+                    * 定义和用法
+                    insertAfter() 方法在被选元素之后插入 HTML 标记或已有的元素。
+                    注释：如果该方法用于已有元素，这些元素会被从当前位置移走，然后被添加到被选元素之后。
+                    语法
+                    $(content).insertAfter(selector)
+                    参数	描述
+                    content
+                    必需。规定要插入的内容。可能的值：
+                    选择器表达式
+                    HTML 标记
+                    selector	必需。规定在何处插入被选元素。
+                    */
+                   /**
+                    * 将span添加class后插入到当前元素
+                    */
+                   this.wrapper = $("<span>")
+                       .addClass("custom-combobox")
+                       .insertAfter(this.element);
+                   this.element.hide();//当前元素隐藏
+                   this._createAutocomplete();//调用建立自动补全插件
+                   this._createShowAllButton();//调用建立展示全部按钮
+
+               },
+               _createAutocomplete:function () {
+                   /**
+                    * selected:当前元素子元素中被选中的对象
+                    * value:被选中的值如果存在，返回被选中的text()
+                    * 否则返回""
+                    */
+                   var selected = this.element.children(":selected"),
+                       value = selected.val()?selected.text():"";
+                   /**
+                    * 将input添加到外部环绕结构中，即span中。将选中的文本值填入到input中，添加自动完成功能和tooltip
+                    */
+                   /**
+                    *$.proxy用法详解
+                    *
+                    * jQuery中的$.proxy官方描述为：
+                    *
+                    * 描述：接受一个函数，然后返回一个新函数，并且这个新函数始终保持了特定的上下文语境。
+                    *
+                    * 官方API；
+                    *
+                    * jQuery.proxy( function, context )
+                    *
+                    * function为执行的函数，content为函数的上下文this值会被设置成这个object对象
+                    *
+                    * jQuery.proxy( context, name )
+                    *
+                    * content 函数的上下文会被设置成这个object对象，name要执行的函数，次函数必须是content对象的属性、
+                    *
+                    * jQuery.proxy( function, context [, additionalArguments ] )
+                    *
+                    * function为执行的函数，content为函数的上下文this值会被设置成这个object对象,additionalArguments任何数目的参数，传递给function
+                    *
+                    * 更详细的用法参考：
+                    *
+                    * http://www.css88.com/jqapi-1.9/jQuery.proxy/
+                    *
+                    * 现在让我们一起来看实际例子：
+                    * 复制代码
+                    * var objPerson = {
+                    * name: "obj",
+                    * age: 32,
+                    * test: function() {
+                    * $("p").after("Name: " + this.name + "
+                    * Age: " + this.age);
+                    * }
+                    * }
+                    * $("#btn").on("click", $.proxy(objPerson.test, objPerson))
+                    * 复制代码
+                    * 点击按钮，输出：Name:obj  Age:32
+                    * objPerson.test表示上下文的方法，objPerson代表执行的上下文,例子中的this的上下文指的是objPerson
+                    * */
+                   this.input = $("<input>").appendTo(this.wrapper)
+                       .val(value)
+                       .attr("title","")
+                       .addClass( "custom-combobox-input ui-widget ui-widget-content ui-state-default ui-corner-left" )
+                       .autocomplete({
+                           delay: 0,
+                           minLength: 0,
+                           source: $.proxy( this, "_source" )
+                       })
+                       .tooltip({
+                           tooltipClass: "ui-state-highlight"
+                       });
+                   /**
+                    * 为当前对象的input绑定自动选择控件
+                    */
+                   this._on(this.input,{
+                         autocompleteselect:function (event,ui) {
+                             ui.item.option.selected = true;//UI组件节点是否选中为true
+                             this._trigger("select",event,{//当前对象绑定select事件，当前的节点对象为ui控件选中的节点的option对象
+                                 item:ui.item.option
+                             });
+
+                         },
+                       autocompletechange:"_removeIfInvalid"
+                   })
+               },
+               _createShowAllButton:function () {
+                   var input = this.input,
+                       wasOpen = false;
+                   $("<a>")
+                       .attr("tabIndex",-1)
+                       .attr("title","Show All Items")
+                       .tooltip()
+                       .appendTo(this.wrapper)
+                       .button({
+                           icons:{
+                               primary:"ui-icon-triangle-1-s"
+                           },
+                           text:false
+                       }).removeClass("ui-corner-all")
+                       .addClass("custom-combobox-toggle ui-corner-right")
+                       .mousedown(function () {
+                           wasOpen = input.autocomplete("widget").is(":visible");
+                       })
+                       .click(function () {//点击点击时获得焦点
+                           input.focus();
+                           if(wasOpen){//如果被打开，则返回
+                               return;
+                           }
+                           
+                           input.autocomplete("search","");
+                       });
+               },
+                /**
+                * map()函数用于处理当前jQuery对象匹配的所有元素，并将处理结果封装为新的数组。返回封装该数组的jQuery对象。
+                *该函数属于jQuery对象(实例)。
+                *语法
+                *jQuery 1.2 新增该函数。
+                *jQueryObject.map( callback )
+                *参数
+                *参数	描述
+                *callback	Function类型指定的处理函数。
+                *map()函数将根据匹配的所有元素遍历执行该函数，
+                 * 函数中的this将指向当前迭代的元素。
+                 * map()还会为函数传入两个参数：
+                 * 第一个参数就是该元素在匹配元素中的索引，
+                 * 第二个参数就是该元素。
+                *每次执行callback函数的返回值将作为结果数组中的一个元素，如果函数的返回值为null或undefined，则不会被添加到结果数组中。map()函数的返回值就是封装该结果数组的jQuery对象。
+                *返回值
+                *map()函数的返回值为jQuery类型，返回封装指定函数执行结果的数组的jQuery对象。
+                *一般通过get()方法来获取jQuery对象中封装的整个数组或数组的某个元素。
+                *示例&说明
+                *以下面这段HTML代码为例：
+                *<input id="n1" name="uid" type="checkbox" checked="checked" value="1">
+                *<input id="n2" name="uid" type="checkbox" checked="checked" value="2">
+                *<input id="n3" name="uid" type="checkbox" value="3">
+                *<input id="n4" name="uid" type="checkbox" checked="checked" value="4">
+                *以下jQuery示例代码用于演示map()函数的具体用法：
+                *var $checkedUid = $("[name=uid]:checked");
+                *将所有匹配元素的value值封装为结果数组，并返回封装了这个结果数组的jQuery对象
+                *var $result = $checkedUid.map( function(index, element){
+                *函数内部的this === element
+                *return this.value;
+                *} );
+                *输出封装的结果数组中索引为1的元素
+                *document.writeln( $result.get( 1 ) ); // 2
+                * 获取封装的整个结果数组
+                *var array = $result.get();
+                *document.writeln( array ); // 1,2,4
+                *运行代码
+                * @param request
+                * @param response
+                * @private
+                **/
+               _source:function (request,response) {
+                   var matcher = new RegExp($.ui.autocomplete.escapeRegex(request.term),"i");
+                   response(this.element.children("option").map(function () {//将当前对象的所有元素，子元素为option的对象，用map函数处理
+                       var text = $(this).text();
+                       if(this.value && (!request.term || matcher.test(text)))
+                             return {
+                               label:text,
+                                 value:text,
+                                 option:this
+                             };
+                   }));
+                   
+               },
+               
+               _removeIfInvalid:function (event,ui) {
+                   //Selected an item,nothing to do
+                   if(ui.item){
+                       return;
+                   }
+                   var value = this.input.val(),
+                       valueLowerCase = value.toLowerCase(),
+                       valid = false;
+                   this.element.children("option").each(function () {
+                       if($(this).text().toLowerCase() === valueLowerCase){
+                           this.selected = valid = true;
+                           return false;
+                       }
+                   });
+                   if (valid){
+                       return;
+                   }
+
+                   this.input
+                       .val("")
+                       .attr("title",value +"didn't match any item")
+                       .tooltip("open");
+                   this.element.val("");
+                   this._delay(function () {
+                       this.input.tooltip("close").attr("title","");
+                   },2500);
+                   this.input.data("ui-autocomplete").term = "";
+               },
+               _destroy:function(){
+                   this.wrapper.remove();
+                   this.element.show();
+               }
+           })
+       })(jQuery);
+       $(function () {
+          $("#combobox").combobox();
+          $("#toggle").click(function () {
+              $("#combobox").toggle();
+          })
+       })
+   </script>
+    <link rel="stylesheet" href="css/demos.css">
+    <style type="text/css">
+        .custom-combobox {
+            position: relative;
+            display: inline-block;
+        }
+        .custom-combobox-toggle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            margin-left: -1px;
+            padding: 0;
+            /* support: IE7 */
+            *height: 1.7em;
+            *top: 0.1em;
+        }
+        .custom-combobox-input {
+            margin: 0;
+            padding: 0.3em;
+        }
+    </style>
+</head>
+<body>
+<h2 id="h2-caption">超实用的jQuery代码段 - jQuery实现Combobox风格用户输入自动完成</h2>
+<div class="ui-widget">
+    <label>选择用户最喜爱的编程语言:</label>
+    <select id="combobox">
+        <option value="">Select one...</option>
+        <option value="ActionScript">ActionScript</option>
+        <option value="AppleScript">AppleScript</option>
+        <option value="Asp">Asp</option>
+        <option value="BASIC">BASIC</option>
+        <option value="C">C</option>
+        <option value="C++">C++</option>
+        <option value="Clojure">Clojure</option>
+        <option value="COBOL">COBOL</option>
+        <option value="ColdFusion">ColdFusion</option>
+        <option value="Erlang">Erlang</option>
+        <option value="Fortran">Fortran</option>
+        <option value="Groovy">Groovy</option>
+        <option value="Haskell">Haskell</option>
+        <option value="Java">Java</option>
+        <option value="JavaScript">JavaScript</option>
+        <option value="Lisp">Lisp</option>
+        <option value="Perl">Perl</option>
+        <option value="PHP">PHP</option>
+        <option value="Python">Python</option>
+        <option value="Ruby">Ruby</option>
+        <option value="Scala">Scala</option>
+        <option value="Scheme">Scheme</option>
+    </select>
+</div>
+<!--<button id="toggle">Show underlying select</button>-->
+</body>
+</html>
